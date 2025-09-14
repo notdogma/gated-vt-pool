@@ -38,6 +38,7 @@ public class LoggerPollerSim implements Runnable {
 
         System.out.println( "Allowed tasks: " + allowedTasks );
 
+        // Here we're simulating getting events from the logger.
         // For the purposes of this simulation, we'll submit 10% of the available permits because each event has 3 assets and each asset has 3 rules.
         // The mapToObj does the multiplication by 3 assets, but constructing an EventSim object with three assets.
         // The flatMap takes the event with 3 assets and calls the rule cache sim to get the set of rules. The result is a stream of 9 EventTaskDPContext
@@ -46,11 +47,15 @@ public class LoggerPollerSim implements Runnable {
         // The result is a stream of 9 or 10 EventTaskContext objects in this simulation.
         // Next we group the tasks by event id. This lets us submit the tasks for a single event in a batch.
         Map<String, List<ClientTask>> tasks = IntStream.range( 0, allowedTasks / 10 )
+                                                       // this is the event
                                                        .mapToObj( i -> new EventSim( "event" + i, new ArrayList<>( List.of( "asset1", "asset2", "asset3" ) ) ) )
+                                                       // this creates tasks for each event
                                                        .flatMap( eventSim -> {
+                                                           // this simulates getting rules from the rule cache
                                                            Stream<ClientTask> dpStream = new RuleCacheSim().getRules( eventSim )
                                                                                                            .map( DPTaskSim::new );
 
+                                                           // this simulates that the event is a process complete event
                                                            if( Math.random() > .5 ) {
                                                                Stream<ClientTask> epStream =
                                                                        Stream.of( new EPTaskSim( new EventTaskEPContext(
@@ -69,12 +74,15 @@ public class LoggerPollerSim implements Runnable {
         // This protects us from unhandled exceptions in the tasks.
 
         tasks.forEach( ( k, v ) -> {
+            // for each event, list pair
             SafeCompletableFuture.safeHandle(
                     gatedExecutor.runAsync( () -> {
                         List<CompletableFuture<EventTaskContext>> futures = v.stream().map( callable -> gatedExecutor.supplyAsync( callable )
                                                                                                                      .handle( ( result, e ) -> {
                                                                                                                          // for exceptions, result here will
                                                                                                                          // be null!!!
+                                                                                                                         // but e could also be null. one or the other
+                                                                                                                         // will be non-null.
                                                                                                                          try {
                                                                                                                              if( e != null ) {
                                                                                                                                  System.err.println(
