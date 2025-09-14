@@ -32,7 +32,7 @@ public class LoggerPollerSim implements Runnable {
 
     @Override
     public void run() {
-        // See
+        // See how many permits are available.
         int allowedTasks = gatedExecutor.getAvailablePermits();
 
         System.out.println( "Allowed tasks: " + allowedTasks );
@@ -73,11 +73,8 @@ public class LoggerPollerSim implements Runnable {
             // for each event, list pair
             SafeCompletableFuture.safeHandle( gatedExecutor.runAsync( () -> {
                 List<CompletableFuture<EventTaskContext>> futures = v.stream().map( callable -> gatedExecutor.supplyAsync( callable ).handle( ( result, e ) -> {
-                    // for exceptions, result here will
-                    // be null!!!
-                    // but e could also be null. one or
-                    // the other
-                    // will be non-null.
+                    // for exceptions, result here will be null!!!
+                    // but e could also be null. one or the other will be non-null.
                     try {
                         if( e != null ) {
                             System.err.println( "Task failed (e): " + e.getCause().getMessage() );
