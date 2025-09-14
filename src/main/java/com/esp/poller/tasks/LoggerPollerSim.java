@@ -110,21 +110,21 @@ public class LoggerPollerSim implements Runnable {
                         // that result type.
                         // This makes it super easy to know whether all tasks were successful or if there were any failures.
                         //
-                        System.out.println( "Submitted futures: " + futures.size() );
+                        System.out.println( k + " Submitted futures: " + futures.size() );
                         CompletableFuture.allOf( futures.toArray( CompletableFuture[]::new ) ).join();
-                        System.out.println( "All submitted futures are done. Parent is now running." );
+                        System.out.println( k + " All submitted futures are done. Parent is now running." );
                         Map<EventTaskContext.Result, List<EventTaskContext>> results = futures.stream()
                                                                                               .map( CompletableFuture::join ).collect( Collectors.groupingBy(
                                         EventTaskContext::getResult  // Group by the Result
                                 ) );
-                        System.out.println( "Collected results." );
+                        System.out.println( k + " Collected results." );
 
                         List<EventTaskContext> success = results.get( EventTaskContext.Result.SUCCESS );
                         List<EventTaskContext> failureRetryable = results.get( EventTaskContext.Result.FAILURE_RETRYABLE );
                         List<EventTaskContext> failureNonRetryable = results.get( EventTaskContext.Result.FAILURE_NON_RETRYABLE );
-                        System.out.println( "SUCCESS: " + (null != success ? success.size() : 0) );
-                        System.out.println( "FAILURE_RETRYABLE: " + (null != failureRetryable ? failureRetryable.size() : 0) );
-                        System.out.println( "FAILURE_NON_RETRYABLE: " + (null != failureNonRetryable ? failureNonRetryable.size() : 0) );
+                        System.out.println( k + " SUCCESS: " + (null != success ? success.size() : 0) );
+                        System.out.println( k + " FAILURE_RETRYABLE: " + (null != failureRetryable ? failureRetryable.size() : 0) );
+                        System.out.println( k + " FAILURE_NON_RETRYABLE: " + (null != failureNonRetryable ? failureNonRetryable.size() : 0) );
 
                         // Now we can determine the course of action based on the results.
                         // If all tasks were successful, we can call poller to update the status to success.
