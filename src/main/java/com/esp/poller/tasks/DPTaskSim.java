@@ -18,6 +18,11 @@ public record DPTaskSim(EventTaskDPContext context) implements ClientTask {
         Thread.sleep( Math.min( Math.max( randSleep, 300 ), 600 ) );
         context.setResult( EventTaskContext.Result.SUCCESS );
 //        System.out.println( "DP task completed: " + context );
+
+        if( Math.random() < .05 ) {
+            throw new RuntimeException( "Simulated failure!!!" );
+        }
+
         return context;
     }
 

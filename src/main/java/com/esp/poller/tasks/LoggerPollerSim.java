@@ -5,6 +5,7 @@ import com.esp.poller.future.SafeCompletableFuture;
 import com.esp.poller.model.EventSim;
 import com.esp.poller.model.EventTaskContext;
 import com.esp.poller.model.EventTaskEPContext;
+import com.esp.poller.model.EventTaskErrContext;
 import com.esp.poller.ruleCache.RuleCacheSim;
 
 import java.util.ArrayList;
@@ -72,21 +73,26 @@ public class LoggerPollerSim implements Runnable {
                     gatedExecutor.runAsync( () -> {
                         List<CompletableFuture<EventTaskContext>> futures = v.stream().map( callable -> gatedExecutor.supplyAsync( callable )
                                                                                                                      .handle( ( result, e ) -> {
+                                                                                                                         // for exceptions, result here will
+                                                                                                                         // be null!!!
                                                                                                                          try {
                                                                                                                              if( e != null ) {
                                                                                                                                  System.err.println(
-                                                                                                                                         "Task failed: " + e.getCause()
-                                                                                                                                                            .getMessage() );
-                                                                                                                                 result.setResult(
-                                                                                                                                         EventTaskContext.Result.FAILURE_RETRYABLE );
+                                                                                                                                         "Task failed (e): " + e.getCause()
+                                                                                                                                                                .getMessage() );
+                                                                                                                                 result =
+                                                                                                                                         new EventTaskErrContext(
+                                                                                                                                                 EventTaskContext.Result.FAILURE_RETRYABLE );
                                                                                                                              } else
                                                                                                                                  result.setResult(
                                                                                                                                          EventTaskContext.Result.SUCCESS );
                                                                                                                          } catch( Exception e2 ) {
                                                                                                                              System.err.println( "Task " +
-                                                                                                                                     "failed: " + e2.getCause()
-                                                                                                                                                    .getMessage() );
-                                                                                                                             result.setResult( EventTaskContext.Result.FAILURE_RETRYABLE );
+                                                                                                                                     "failed (e2): " + e2.getCause()
+                                                                                                                                                         .getMessage() );
+                                                                                                                             result =
+                                                                                                                                     new EventTaskErrContext(
+                                                                                                                                             EventTaskContext.Result.FAILURE_RETRYABLE );
                                                                                                                          }
                                                                                                                          return result;
                                                                                                                      } ) ).toList();
