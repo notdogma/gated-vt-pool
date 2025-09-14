@@ -10,13 +10,19 @@ import java.util.concurrent.Callable;
  * result set.
  * The real implementation would be a call to the DP service.
  */
-public record DPTaskSim(EventTaskDPContext context) implements Callable<EventTaskContext> {
+public record DPTaskSim(EventTaskDPContext context) implements ClientTask {
 
     @Override
     public EventTaskContext call() throws Exception {
         int randSleep = (int) (Math.random() * 1000);
         Thread.sleep( Math.min( Math.max( randSleep, 300 ), 600 ) );
         context.setResult( EventTaskContext.Result.SUCCESS );
+//        System.out.println( "DP task completed: " + context );
+        return context;
+    }
+
+    @Override
+    public EventTaskContext getEventTaskContext() {
         return context;
     }
 }

@@ -1,6 +1,7 @@
 package com.esp.poller.tasks;
 
 import com.esp.poller.executor.GatedVirtualThreadExecutor;
+import com.esp.poller.future.SafeCompletableFuture;
 import com.esp.poller.model.EventSim;
 import com.esp.poller.model.EventTaskContext;
 import com.esp.poller.model.EventTaskEPContext;
@@ -42,74 +43,98 @@ public class LoggerPollerSim implements Runnable {
         // objects.
         // The flatMap then 'randomly' decides to add an EventTaskEPContext object to the stream.
         // The result is a stream of 9 or 10 EventTaskContext objects. THis is just a stream at this point.
-        Stream<Callable<EventTaskContext>> tasks = IntStream.range( 0, allowedTasks / 10 )
-                                                            .mapToObj( i -> new EventSim( new ArrayList<>( List.of( "asset1", "asset2", "asset3" ) ) ) )
-                                                            .flatMap( eventSim -> {
-                                                                Stream<Callable<EventTaskContext>> dpStream = new RuleCacheSim().getRules( eventSim )
-                                                                                                                                .map( DPTaskSim::new );
+        Map<String, List<ClientTask>> tasks = IntStream.range( 0, allowedTasks / 10 )
+                                                       .mapToObj( i -> new EventSim( "event" + i, new ArrayList<>( List.of( "asset1", "asset2", "asset3" ) ) ) )
+                                                       .flatMap( eventSim -> {
+                                                           Stream<ClientTask> dpStream = new RuleCacheSim().getRules( eventSim )
+                                                                                                           .map( DPTaskSim::new );
 
-                                                                if( Math.random() > .5 ) {
-                                                                    Stream<Callable<EventTaskContext>> epStream =
-                                                                            Stream.of( new EPTaskSim( new EventTaskEPContext(
-                                                                                    eventSim ) ) );
+                                                           if( Math.random() > .5 ) {
+                                                               Stream<ClientTask> epStream =
+                                                                       Stream.of( new EPTaskSim( new EventTaskEPContext(
+                                                                               eventSim ) ) );
 
-                                                                    return Stream.concat( dpStream, epStream );
-                                                                } else
-                                                                    return dpStream;
-                                                            } );
+                                                               return Stream.concat( dpStream, epStream );
+                                                           } else
+                                                               return dpStream;
+                                                       } ).collect( Collectors.groupingBy( t -> t.getEventTaskContext().eventSim().eventId() ) );
 
         // Now we submit a Runnable to our GatedVirtualThreadExecutor.
         // This runnable takes the stream of tasks that was determined above and submits them to the executor via the map function.
         // The result of the map is collected into a List of CompletableFuture objects.
         // The handle function is used to set the result of the CompletableFuture to either SUCCESS or FAILURE.
+        // The handle function is called whether the task completed successfully or not. So we need to check whether the exception is null or not.
         // This protects us from unhandled exceptions in the tasks.
-        gatedExecutor.runAsync( () -> {
-            List<CompletableFuture<EventTaskContext>> futures = tasks.map( callable -> gatedExecutor.supplyAsync( callable ).handle( ( result, e ) -> {
-                System.err.println( "Task failed: " + e.getCause().getMessage() );
-                result.setResult( EventTaskContext.Result.FAILURE_RETRYABLE );
-                return result;
-            } ) ).toList();
 
-            // Now, since the code we have here is actually executed in the Runnable submitted, we can wrap the list of CompletableFuture objects we created
-            // just above in a CompletableFuture.allOf() call and join. THe join here will block until all the futures are done.
-            // Since we protected the list of Callables above using the handle, we're still protected.
-            // Once we get past the join we can determine the course of action based on the results. A clever way to do that is to stream the list of futures,
-            // calling map to join each future and then collect the results into a map grouped by the result type. This will give us a Map with;
-            // SUCCESS, FAILURE_RETRYABLE and FAILURE_NON_RETRYABLE keys.  Each key will have a List of EventTaskContext objects that were completed with
-            // that result type.
-            // This makes it super easy to know whether all tasks were successful or if there were any failures.
-            //
-            System.out.println( "Submitted futures: " + futures.size() );
-            CompletableFuture.allOf( futures.toArray( CompletableFuture[]::new ) ).join();
-            System.out.println( "All submitted futures are done. Parent is now running." );
-            Map<EventTaskContext.Result, List<EventTaskContext>> results = futures.stream()
-                                                                                  .map( CompletableFuture::join ).collect( Collectors.groupingBy(
-                            EventTaskContext::getResult  // Group by the Result
-                    ) );
-            System.out.println( "Collected results." );
+        tasks.forEach( ( k, v ) -> {
+            SafeCompletableFuture.safeHandle(
+                    gatedExecutor.runAsync( () -> {
+                        List<CompletableFuture<EventTaskContext>> futures = v.stream().map( callable -> gatedExecutor.supplyAsync( callable )
+                                                                                                                     .handle( ( result, e ) -> {
+                                                                                                                         try {
+                                                                                                                             if( e != null ) {
+                                                                                                                                 System.err.println(
+                                                                                                                                         "Task failed: " + e.getCause()
+                                                                                                                                                            .getMessage() );
+                                                                                                                                 result.setResult(
+                                                                                                                                         EventTaskContext.Result.FAILURE_RETRYABLE );
+                                                                                                                             } else
+                                                                                                                                 result.setResult(
+                                                                                                                                         EventTaskContext.Result.SUCCESS );
+                                                                                                                         } catch( Exception e2 ) {
+                                                                                                                             System.err.println( "Task " +
+                                                                                                                                     "failed: " + e2.getCause()
+                                                                                                                                                                     .getMessage() );
+                                                                                                                             result.setResult( EventTaskContext.Result.FAILURE_RETRYABLE );
+                                                                                                                         }
+                                                                                                                         return result;
+                                                                                                                     } ) ).toList();
 
-            List<EventTaskContext> success = results.get( EventTaskContext.Result.SUCCESS );
-            List<EventTaskContext> failureRetryable = results.get( EventTaskContext.Result.FAILURE_RETRYABLE );
-            List<EventTaskContext> failureNonRetryable = results.get( EventTaskContext.Result.FAILURE_NON_RETRYABLE );
-            System.out.println( "SUCCESS: " + (null != success ? success.size() : 0) );
-            System.out.println( "FAILURE_RETRYABLE: " + (null != failureRetryable ? failureRetryable.size() : 0) );
-            System.out.println( "FAILURE_NON_RETRYABLE: " + (null != failureNonRetryable ? failureNonRetryable.size() : 0) );
+                        // Now, since the code we have here is actually executed in the Runnable submitted, we can wrap the list of CompletableFuture objects we
+                        // created
+                        // just above in a CompletableFuture.allOf() call and join. THe join here will block until all the futures are done.
+                        // Since we protected the list of Callables above using the handle, we're still protected.
+                        // Once we get past the join we can determine the course of action based on the results. A clever way to do that is to stream the
+                        // list of
+                        // futures,
+                        // calling map to join each future and then collect the results into a map grouped by the result type. This will give us a Map with;
+                        // SUCCESS, FAILURE_RETRYABLE and FAILURE_NON_RETRYABLE keys.  Each key will have a List of EventTaskContext objects that were completed
+                        // with
+                        // that result type.
+                        // This makes it super easy to know whether all tasks were successful or if there were any failures.
+                        //
+                        System.out.println( "Submitted futures: " + futures.size() );
+                        CompletableFuture.allOf( futures.toArray( CompletableFuture[]::new ) ).join();
+                        System.out.println( "All submitted futures are done. Parent is now running." );
+                        Map<EventTaskContext.Result, List<EventTaskContext>> results = futures.stream()
+                                                                                              .map( CompletableFuture::join ).collect( Collectors.groupingBy(
+                                        EventTaskContext::getResult  // Group by the Result
+                                ) );
+                        System.out.println( "Collected results." );
 
-            // Now we can determine the course of action based on the results.
-            // If all tasks were successful, we can call poller to update the status to success.
-            // If all tasks failed, we can call poller to update the status to failed.
-            // If some tasks failed, we can call poller to update the status to partial success.
-            if( null != success && success.size() == futures.size() ) {
-                System.out.println( "All submitted futures are done." );
-            } else if( null != failureRetryable && failureRetryable.size() == futures.size() ) {
-                System.out.println( "All submitted futures are failed, retryable." );
-            } else if( null != failureNonRetryable && failureNonRetryable.size() == futures.size() ) {
-                System.out.println( "All submitted futures are failed, non-retryable." );
-            } else {
-                System.out.println( "Some submitted futures are failed as retryable and non-retryable." );
-            }
+                        List<EventTaskContext> success = results.get( EventTaskContext.Result.SUCCESS );
+                        List<EventTaskContext> failureRetryable = results.get( EventTaskContext.Result.FAILURE_RETRYABLE );
+                        List<EventTaskContext> failureNonRetryable = results.get( EventTaskContext.Result.FAILURE_NON_RETRYABLE );
+                        System.out.println( "SUCCESS: " + (null != success ? success.size() : 0) );
+                        System.out.println( "FAILURE_RETRYABLE: " + (null != failureRetryable ? failureRetryable.size() : 0) );
+                        System.out.println( "FAILURE_NON_RETRYABLE: " + (null != failureNonRetryable ? failureNonRetryable.size() : 0) );
 
-            //todo: call logger to update the event status.
+                        // Now we can determine the course of action based on the results.
+                        // If all tasks were successful, we can call poller to update the status to success.
+                        // If all tasks failed, we can call poller to update the status to failed.
+                        // If some tasks failed, we can call poller to update the status to partial success.
+                        if( null != success && success.size() == futures.size() ) {
+                            System.out.println( k + " All submitted futures are done." );
+                        } else if( null != failureRetryable && failureRetryable.size() == futures.size() ) {
+                            System.out.println( k + " All submitted futures are failed, retryable." );
+                        } else if( null != failureNonRetryable && failureNonRetryable.size() == futures.size() ) {
+                            System.out.println( k + " All submitted futures are failed, non-retryable." );
+                        } else {
+                            System.out.println( k + " Some submitted futures are failed as retryable and non-retryable." );
+                        }
+
+                        //todo: call logger to update the event status.
+                    } ), ( r, ex ) -> r, null );
         } );
     }
 }

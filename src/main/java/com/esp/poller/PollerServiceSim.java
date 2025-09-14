@@ -19,13 +19,13 @@ public class PollerServiceSim {
     private final ScheduledExecutorService pollerExecutor;
     private final GatedVirtualThreadExecutor gatedExecutor;
 
-    public PollerServiceSim( int maxConcurrentTasks) {
+    public PollerServiceSim( int maxConcurrentTasks ) {
         pollerExecutor = Executors.newScheduledThreadPool( 1 );
         gatedExecutor = new GatedVirtualThreadExecutor( maxConcurrentTasks );
     }
 
     public void start() {
-        pollerExecutor.scheduleWithFixedDelay( new LoggerPollerSim(gatedExecutor), 1, 5, TimeUnit.SECONDS );
+        pollerExecutor.scheduleWithFixedDelay( new LoggerPollerSim( gatedExecutor ), 1, 5, TimeUnit.SECONDS );
     }
 
     public void stop() {

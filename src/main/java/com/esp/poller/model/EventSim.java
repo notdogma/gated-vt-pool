@@ -5,5 +5,5 @@ import java.util.List;
 /**
  * Simulated event, just need the asset IDs for this.
  */
-public record EventSim(List<String> assetIds) {
+public record EventSim(String eventId, List<String> assetIds) {
 }
