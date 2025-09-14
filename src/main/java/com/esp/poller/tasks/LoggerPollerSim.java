@@ -42,7 +42,8 @@ public class LoggerPollerSim implements Runnable {
         // The flatMap takes the event with 3 assets and calls the rule cache sim to get the set of rules. The result is a stream of 9 EventTaskDPContext
         // objects.
         // The flatMap then 'randomly' decides to add an EventTaskEPContext object to the stream.
-        // The result is a stream of 9 or 10 EventTaskContext objects. THis is just a stream at this point.
+        // The result is a stream of 9 or 10 EventTaskContext objects in this simulation.
+        // Next we group the tasks by event id. This lets us submit the tasks for a single event in a batch.
         Map<String, List<ClientTask>> tasks = IntStream.range( 0, allowedTasks / 10 )
                                                        .mapToObj( i -> new EventSim( "event" + i, new ArrayList<>( List.of( "asset1", "asset2", "asset3" ) ) ) )
                                                        .flatMap( eventSim -> {
@@ -59,9 +60,9 @@ public class LoggerPollerSim implements Runnable {
                                                                return dpStream;
                                                        } ).collect( Collectors.groupingBy( t -> t.getEventTaskContext().eventSim().eventId() ) );
 
-        // Now we submit a Runnable to our GatedVirtualThreadExecutor.
-        // This runnable takes the stream of tasks that was determined above and submits them to the executor via the map function.
-        // The result of the map is collected into a List of CompletableFuture objects.
+        // Now we loop of the entries in the map submit a Runnable to our GatedVirtualThreadExecutor.
+        // This runnable takes the list of tasks for each event that was determined above and submits them to the executor via the map function.
+        // The result of the tasks for each event are then collected into a List of CompletableFuture objects.
         // The handle function is used to set the result of the CompletableFuture to either SUCCESS or FAILURE.
         // The handle function is called whether the task completed successfully or not. So we need to check whether the exception is null or not.
         // This protects us from unhandled exceptions in the tasks.
@@ -84,7 +85,7 @@ public class LoggerPollerSim implements Runnable {
                                                                                                                          } catch( Exception e2 ) {
                                                                                                                              System.err.println( "Task " +
                                                                                                                                      "failed: " + e2.getCause()
-                                                                                                                                                                     .getMessage() );
+                                                                                                                                                    .getMessage() );
                                                                                                                              result.setResult( EventTaskContext.Result.FAILURE_RETRYABLE );
                                                                                                                          }
                                                                                                                          return result;
