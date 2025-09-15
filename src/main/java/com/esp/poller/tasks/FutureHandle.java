@@ -7,6 +7,11 @@ import com.esp.poller.model.EventTaskErrContext;
 
 import java.util.function.BiFunction;
 
+/**
+ * This is a BiFunction that is used to handle the result of a CompletableFuture.
+ * It takes an EventTaskContext and a Throwable as parameters and returns an EventTaskContext.
+ * It is used to handle the result of a CompletableFuture in a functional way.
+ */
 public class FutureHandle implements BiFunction<EventTaskContext, Throwable, EventTaskContext> {
     @Override
     public EventTaskContext apply( EventTaskContext result, Throwable e ) {

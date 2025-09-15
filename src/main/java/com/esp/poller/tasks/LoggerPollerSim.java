@@ -46,19 +46,7 @@ public class LoggerPollerSim implements Runnable {
         // Next we group the tasks by event id. This lets us submit the tasks for a single event in a batch.
         Map<String, List<ClientTask>> tasks = new FetchEventsFromLogger().apply( allowedTasks )
                                                                          // this creates tasks for each event
-                                                                         .flatMap( eventSim -> {
-                                                                             // this simulates getting rules from the rule cache
-                                                                             Stream<ClientTask> dpStream = new FetchRulesForEvent().apply( eventSim );
-
-                                                                             // this simulates that the event is a process complete event
-                                                                             if( Math.random() > .5 ) {
-                                                                                 Stream<ClientTask> epStream = Stream.of( new EPTaskSim( new EventTaskEPContext(
-                                                                                         eventSim ) ) );
-
-                                                                                 return Stream.concat( dpStream, epStream );
-                                                                             } else
-                                                                                 return dpStream;
-                                                                         } )
+                                                                         .flatMap( new CreateAllTasksForEvent() )
                                                                          .collect( Collectors.groupingBy( t -> t.getEventTaskContext().eventSim().eventId() ) );
 
         // Now we loop of the entries in the map submit a Runnable to our GatedVirtualThreadExecutor.
