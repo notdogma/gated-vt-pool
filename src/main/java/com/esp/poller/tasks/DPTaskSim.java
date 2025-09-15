@@ -1,5 +1,7 @@
 package com.esp.poller.tasks;
 
+import com.esp.poller.exception.NonRetryableException;
+import com.esp.poller.exception.RetryableException;
 import com.esp.poller.model.EventTaskContext;
 import com.esp.poller.model.EventTaskDPContext;
 
@@ -19,8 +21,11 @@ public record DPTaskSim(EventTaskDPContext context) implements ClientTask {
         context.setResult( EventTaskContext.Result.SUCCESS );
 //        System.out.println( "DP task completed: " + context );
 
-        if( Math.random() < .05 ) {
-            throw new RuntimeException( "Simulated failure!!!" );
+        if( Math.random() < .02 ) {
+            throw new NonRetryableException( "Simulated non-retryable failure!!!" );
+        }
+        if( Math.random() < .03 ) {
+            throw new RetryableException( "Simulated retryable failure!!!" );
         }
 
         return context;

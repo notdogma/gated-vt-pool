@@ -1,5 +1,7 @@
 package com.esp.poller.tasks;
 
+import com.esp.poller.exception.NonRetryableException;
+import com.esp.poller.exception.RetryableException;
 import com.esp.poller.executor.GatedVirtualThreadExecutor;
 import com.esp.poller.future.SafeCompletableFuture;
 import com.esp.poller.model.EventSim;
@@ -74,8 +76,14 @@ public class LoggerPollerSim implements Runnable {
                     // but e could also be null. one or the other will be non-null.
                     try {
                         if( e != null ) {
-                            System.err.println( "Task failed (e): " + e.getCause().getMessage() );
-                            result = new EventTaskErrContext( EventTaskContext.Result.FAILURE_RETRYABLE );
+                            System.err.println( "Task failed (e): " + e );
+                            if( e.getCause() instanceof RetryableException ) {
+                                result = new EventTaskErrContext( EventTaskContext.Result.FAILURE_RETRYABLE );
+                            } else if( e.getCause() instanceof NonRetryableException ) {
+                                result = new EventTaskErrContext( EventTaskContext.Result.FAILURE_NON_RETRYABLE );
+                            } else {
+                                result = new EventTaskErrContext( EventTaskContext.Result.FAILURE_RETRYABLE );
+                            }
                         } else
                             result.setResult( EventTaskContext.Result.SUCCESS );
                     } catch( Exception e2 ) {
