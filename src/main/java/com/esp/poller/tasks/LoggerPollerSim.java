@@ -6,14 +6,11 @@ import com.esp.poller.model.EventSim;
 import com.esp.poller.model.EventTaskContext;
 import com.esp.poller.model.EventTaskEPContext;
 import com.esp.poller.model.EventTaskErrContext;
-import com.esp.poller.ruleCache.RuleCacheSim;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 /**
@@ -45,22 +42,22 @@ public class LoggerPollerSim implements Runnable {
         // The flatMap then 'randomly' decides to add an EventTaskEPContext object to the stream.
         // The result is a stream of 9 or 10 EventTaskContext objects in this simulation.
         // Next we group the tasks by event id. This lets us submit the tasks for a single event in a batch.
-        Map<String, List<ClientTask>> tasks = IntStream.range( 0, allowedTasks / 10 )
-                                                       // this is the event
-                                                       .mapToObj( i -> new EventSim( "event" + i, new ArrayList<>( List.of( "asset1", "asset2", "asset3" ) ) ) )
-                                                       // this creates tasks for each event
-                                                       .flatMap( eventSim -> {
-                                                           // this simulates getting rules from the rule cache
-                                                           Stream<ClientTask> dpStream = new RuleCacheSim().getRules( eventSim ).map( DPTaskSim::new );
+        Map<String, List<ClientTask>> tasks = new FetchEventsFromLogger().apply( allowedTasks )
+                                                                         // this creates tasks for each event
+                                                                         .flatMap( eventSim -> {
+                                                                             // this simulates getting rules from the rule cache
+                                                                             Stream<ClientTask> dpStream = new FetchRulesForEvent().apply( eventSim );
 
-                                                           // this simulates that the event is a process complete event
-                                                           if( Math.random() > .5 ) {
-                                                               Stream<ClientTask> epStream = Stream.of( new EPTaskSim( new EventTaskEPContext( eventSim ) ) );
+                                                                             // this simulates that the event is a process complete event
+                                                                             if( Math.random() > .5 ) {
+                                                                                 Stream<ClientTask> epStream = Stream.of( new EPTaskSim( new EventTaskEPContext(
+                                                                                         eventSim ) ) );
 
-                                                               return Stream.concat( dpStream, epStream );
-                                                           } else
-                                                               return dpStream;
-                                                       } ).collect( Collectors.groupingBy( t -> t.getEventTaskContext().eventSim().eventId() ) );
+                                                                                 return Stream.concat( dpStream, epStream );
+                                                                             } else
+                                                                                 return dpStream;
+                                                                         } )
+                                                                         .collect( Collectors.groupingBy( t -> t.getEventTaskContext().eventSim().eventId() ) );
 
         // Now we loop of the entries in the map submit a Runnable to our GatedVirtualThreadExecutor.
         // This runnable takes the list of tasks for each event that was determined above and submits them to the executor via the map function.
@@ -120,18 +117,31 @@ public class LoggerPollerSim implements Runnable {
                 // If all tasks were successful, we can call poller to update the status to success.
                 // If all tasks failed, we can call poller to update the status to failed.
                 // If some tasks failed, we can call poller to update the status to partial success.
+                EventSim eventSim;
                 if( null != success && success.size() == futures.size() ) {
                     System.out.println( k + " All submitted futures are done." );
+                    eventSim = success.getFirst().eventSim();
                 } else if( null != failureRetryable && failureRetryable.size() == futures.size() ) {
                     System.out.println( k + " All submitted futures are failed, retryable." );
+                    eventSim = failureRetryable.getFirst().eventSim();
                 } else if( null != failureNonRetryable && failureNonRetryable.size() == futures.size() ) {
                     System.out.println( k + " All submitted futures are failed, non-retryable." );
+                    eventSim = failureNonRetryable.getFirst().eventSim();
                 } else {
                     System.out.println( k + " Some submitted futures are failed as retryable and non-retryable." );
+                    eventSim = null != success && !success.isEmpty()
+                            ? success.getFirst().eventSim() : null != failureRetryable && !failureRetryable.isEmpty()
+                            ? failureRetryable.getFirst().eventSim() : null != failureNonRetryable && !failureNonRetryable.isEmpty()
+                            ? failureNonRetryable.getFirst().eventSim() : null;
                 }
 
                 //todo: call logger to update the event status.
-            } ), ( r, ex ) -> r, null );
+                new PatchEventState().accept( eventSim );
+            } ), ( r, ex ) -> {
+                if( null != ex )
+                    System.err.println( "Task failed (ex): " + ex );
+                return null;
+            }, null );
         } );
     }
 }
