@@ -106,9 +106,7 @@ public class LoggerPollerSim implements Runnable {
                 System.out.println( k + " All submitted futures are done. Parent is now running." );
                 Map<EventTaskContext.Result, List<EventTaskContext>> results = futures.stream()
                                                                                       .map( CompletableFuture::join )
-                                                                                      .collect( Collectors.groupingBy( EventTaskContext::getResult
-                                                                                              // Group by the Result
-                                                                                      ) );
+                                                                                      .collect( Collectors.groupingBy( EventTaskContext::getResult ) );
                 System.out.println( k + " Collected results." );
 
                 List<EventTaskContext> success = results.get( EventTaskContext.Result.SUCCESS );
