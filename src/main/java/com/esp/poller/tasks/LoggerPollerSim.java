@@ -1,19 +1,14 @@
 package com.esp.poller.tasks;
 
-import com.esp.poller.exception.NonRetryableException;
-import com.esp.poller.exception.RetryableException;
 import com.esp.poller.executor.GatedVirtualThreadExecutor;
 import com.esp.poller.future.SafeCompletableFuture;
 import com.esp.poller.model.EventSim;
 import com.esp.poller.model.EventTaskContext;
-import com.esp.poller.model.EventTaskEPContext;
-import com.esp.poller.model.EventTaskErrContext;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * This is a simulation of the poller that polling for events from the logger for processing.
