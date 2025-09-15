@@ -2,6 +2,7 @@ package com.esp.poller;
 
 import com.esp.poller.executor.GatedVirtualThreadExecutor;
 import com.esp.poller.tasks.LoggerPollerSim;
+import com.esp.poller.tasks.SafeTask;
 
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -25,7 +26,7 @@ public class PollerServiceSim {
     }
 
     public void start() {
-        pollerExecutor.scheduleWithFixedDelay( new LoggerPollerSim( gatedExecutor ), 1, 5, TimeUnit.SECONDS );
+        pollerExecutor.scheduleWithFixedDelay( SafeTask.safeRunnable( new LoggerPollerSim( gatedExecutor ) ), 1, 5, TimeUnit.SECONDS );
     }
 
     public void stop() {
