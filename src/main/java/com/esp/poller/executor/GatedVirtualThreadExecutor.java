@@ -6,6 +6,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -30,12 +31,14 @@ public class GatedVirtualThreadExecutor {
 
     public <T> CompletableFuture<T> supplyAsync( Callable<T> task ) {
         queuedCount.incrementAndGet();
+        AtomicBoolean wasDecremented = new AtomicBoolean( false );
 
         return CompletableFuture.supplyAsync( () -> {
             try {
 //                System.out.println( "Queued count in: " + queuedCount.get() + ". Active count in: " + activeCount.get() );
                 gate.acquire(); // Block if too many active
                 queuedCount.decrementAndGet();
+                wasDecremented.set( true );
                 activeCount.incrementAndGet();
 
                 try {
@@ -47,10 +50,12 @@ public class GatedVirtualThreadExecutor {
                 }
             } catch( InterruptedException e ) {
                 Thread.currentThread().interrupt();
-                queuedCount.decrementAndGet();
+                if( !wasDecremented.get() )
+                    queuedCount.decrementAndGet();
                 throw new CompletionException( "Task was interrupted", e );
             } catch( Exception e ) {
-                queuedCount.decrementAndGet();
+                if( !wasDecremented.get() )
+                    queuedCount.decrementAndGet();
                 throw new CompletionException( "Task failed", e );
             }
         }, executor );
@@ -58,11 +63,13 @@ public class GatedVirtualThreadExecutor {
 
     public CompletableFuture<Void> runAsync( Runnable task ) {
         queuedCount.incrementAndGet();
+        AtomicBoolean wasDecremented = new AtomicBoolean( false );
 
         return CompletableFuture.runAsync( () -> {
             try {
                 gate.acquire(); // Block if too many active
                 queuedCount.decrementAndGet();
+                wasDecremented.set( true );
                 activeCount.incrementAndGet();
 
                 try {
@@ -73,10 +80,12 @@ public class GatedVirtualThreadExecutor {
                 }
             } catch( InterruptedException e ) {
                 Thread.currentThread().interrupt();
-                queuedCount.decrementAndGet();
+                if( !wasDecremented.get() )
+                    queuedCount.decrementAndGet();
                 throw new CompletionException( "Task was interrupted", e );
             } catch( Exception e ) {
-                queuedCount.decrementAndGet();
+                if( !wasDecremented.get() )
+                    queuedCount.decrementAndGet();
                 throw new CompletionException( "Task failed", e );
             }
         }, executor );
